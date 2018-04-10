@@ -89,7 +89,7 @@ void sstp_cmac_recv_key(cmac_ctx_st *ctx, uint8_t *key, int len)
 void sstp_cmac_result(cmac_ctx_st *ctx, uint8_t *msg, int mlen, uint8_t *result, int length)
 {
     /* We start with the seed */
-    HMAC_CTX hmac;
+    HMAC_CTX *hmac;
     uint8_t  key[EVP_MAX_MD_SIZE];
     unsigned int klen = sizeof(key);
     uint8_t  iter = 0x01;
@@ -102,27 +102,31 @@ void sstp_cmac_result(cmac_ctx_st *ctx, uint8_t *msg, int mlen, uint8_t *result,
         len = SHA256_DIGEST_LENGTH;
         evp = EVP_sha256;
     }
-    
+
+    /* Prepare the engines */
+    ENGINE_load_builtin_engines();
+    ENGINE_register_all_complete();
+
     /*
      * Generate the Key first, using the T1 = HMAC(HLAK, S | LEN | 0x01),
      *   CMACK = T1a
      */
-    HMAC_CTX_init(&hmac);
-    HMAC_Init   (&hmac, ctx->key, sizeof(ctx->key), evp());
-    HMAC_Update (&hmac, (uint8_t*) ctx->seed,  ctx->slen);
-    HMAC_Update (&hmac, (uint8_t*) &len,  (int) sizeof(len));
-    HMAC_Update (&hmac, (uint8_t*) &iter, (int) sizeof(iter));
-    HMAC_Final  (&hmac, key, &klen);
-    HMAC_CTX_cleanup(&hmac);
+    hmac = HMAC_CTX_new();
+    HMAC_Init_ex(hmac, ctx->key, sizeof(ctx->key), evp(), NULL);
+    HMAC_Update (hmac, (uint8_t*) ctx->seed,  ctx->slen);
+    HMAC_Update (hmac, (uint8_t*) &len,  (int) sizeof(len));
+    HMAC_Update (hmac, (uint8_t*) &iter, (int) sizeof(iter));
+    HMAC_Final  (hmac, key, &klen);
+    HMAC_CTX_free(hmac);
 
     /*
      * Generate the Compound MAC Field
      */
-    HMAC_CTX_init(&hmac);
-    HMAC_Init   (&hmac, key, klen, evp());
-    HMAC_Update (&hmac, msg, mlen);
-    HMAC_Final  (&hmac, result, (unsigned int*) &length);
-    HMAC_CTX_cleanup(&hmac);
+    hmac = HMAC_CTX_new();
+    HMAC_Init_ex(hmac, key, klen, evp(), NULL);
+    HMAC_Update (hmac, msg, mlen);
+    HMAC_Final  (hmac, result, (unsigned int*) &length);
+    HMAC_CTX_free(hmac);
 }
 
 
